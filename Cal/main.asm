@@ -38,8 +38,8 @@ IDD_CAL		equ		2000
 IDC_DISPLAY	equ		2001
 ;----------function declaration-----------
 ShowOutput PROTO
-NumHandler PROTO: DWORD
 MessageHandler PROTO :DWORD,:DWORD, :DWORD, :DWORD 
+NumHandler PROTO: DWORD
 ErrorHandler PROTO
 
 ;----------DATA----------
@@ -54,7 +54,7 @@ WndClass		WNDCLASSEX		<NULL,NULL,MessageHandler,NULL,NULL,NULL,NULL,NULL,COLOR_W
 hMainWnd		DWORD			?
 hEdit			DWORD			?
                     
-Output			BYTE			"0.", 0, 50 dup(0)   
+Output			BYTE			"0", 0, 50 dup(0)   
 Operator		BYTE			?   
 
 IsStart			BYTE			1
@@ -86,7 +86,7 @@ LOCAL msg:MSG
 	;INVOKE LoadCursor,NULL,IDC_ARROW
 	;mov WndClass.hCursor,eax
 	;mov WndClass.hIconSm,0
-	invoke	RegisterClassEx,addr WndClass 
+	INVOKE	RegisterClassEx,addr WndClass 
 
 	INVOKE	CreateDialogParam, WndClass.hInstance, addr Template, 0, addr MessageHandler, 0
 	mov		hMainWnd, eax
@@ -94,14 +94,7 @@ LOCAL msg:MSG
 		call		ErrorHandler
 		jmp		Exit_Program
 	.ENDIF
-	;get components' handler
-	INVOKE  GetDlgItem, hMainWnd, IDC_DISPLAY
-	mov		hEdit, eax
 
-	.IF	eax == 0
-		call		ErrorHandler
-		jmp		Exit_Program
-	.ENDIF
 	INVOKE	ShowWindow,hMainWnd,SW_SHOWNORMAL
 	INVOKE	UpdateWindow,hMainWnd  
 
@@ -125,45 +118,102 @@ ShowOutput PROC
 	ret
 ShowOutput ENDP
 ;----------------------------------specific handler-------------------------------
+
+;pushbutton number, Num is Macro of Button
+;If is start of number, clear output and input number
+;Or add number at the end of output
 NumHandler PROC, Num:DWORD
-	;eax is current number
+	;eax: current number
 	mov eax, Num
 	sub eax, 952
 	;start new number
 	.IF IsStart == 1
 		mov esi, offset Output
 		mov [esi], eax
-		;inc esi
-		;mov BYTE PTR[esi], '.'
 		inc esi
 		mov BYTE PTR[esi], 0
 		mov IsStart, 0
-	;continue behind origin number
+	;continue with origin number
 	.ELSE
 		mov esi, offset Output
-		.while BYTE PTR[esi] != 0
+		.WHILE BYTE PTR[esi] != 0
 			inc esi
-		.endw
+		.ENDW
 		mov [esi], eax
 		inc esi
 		mov BYTE PTR[esi], 0
 	.ENDIF
 	ret
 NumHandler ENDP
+
+;pushbutton point
+;If already have point, return
+;Or add point at the end of Output
+PointHandler PROC
+	mov esi, offset Output
+	.WHILE BYTE PTR[esi] != 0
+		.IF BYTE PTR[esi] == '.'
+			jmp PointReturn
+		.ENDIF
+		inc esi
+	.ENDW
+	mov BYTE PTR[esi], '.'
+	mov BYTE PTR[esi + 1], 0
+PointReturn:
+	ret
+PointHandler ENDP
+
+;pushbutton backspace
+;If there is only one '0', return
+;Or delete one number
+BackspaceHandler PROC
+	mov esi, offset Output
+	.IF (BYTE PTR[esi] == '0') && (BYTE PTR[esi + 1] == 0)
+		jmp BackspaceReturn
+	.ELSE
+		.WHILE BYTE PTR[esi] != 0
+			inc esi
+		.ENDW
+		mov BYTE PTR[esi - 1], 0
+	.ENDIF
+	;update IsStart
+	mov esi, offset Output
+	.IF BYTE PTR[esi] == 0
+		mov BYTE PTR[esi], '0'
+		mov BYTE PTR[esi + 1], 0
+		mov IsStart, 1
+	.ENDIF
+BackspaceReturn:
+	ret
+BackspaceHandler ENDP
+
+
 ;-----------------------------------main message handler--------------------------
 MessageHandler PROC,
 	hWnd:DWORD, localMsg:DWORD, wParam:DWORD, lParam:DWORD
 
 	mov eax, localMsg
+	.IF eax == WM_INITDIALOG
+		;get components' handler
+		INVOKE  GetDlgItem, hWnd, IDC_DISPLAY
+		mov		hEdit, eax
+		.IF	eax == 0
+			call ErrorHandler
+		.ENDIF
+		mov IsStart, 1
+		jmp Show
 
-	.IF eax == WM_COMMAND
+	.ELSEIF eax == WM_COMMAND
 		mov eax, wParam
 		.IF (eax >= IDC_NUM0) && (eax <= IDC_NUM9)
 			INVOKE NumHandler, eax
-			Invoke ShowOutput
-			jmp WinProcExit
+			jmp Show
 		.ELSEIF eax == IDC_POINT
-			jmp WinProcExit
+			INVOKE PointHandler
+			jmp Show
+		.ELSEIF eax == IDC_BACKSPACE
+			INVOKE BackspaceHandler
+			jmp Show
 		.ELSEIF eax == IDC_ADD
 			jmp WinProcExit
 		.ELSEIF eax == IDC_SUB
@@ -178,9 +228,6 @@ MessageHandler PROC,
 			jmp WinProcExit
 		.ELSEIF eax == IDC_C
 			jmp WinProcExit
-		.ELSEIF eax == IDC_BACKSPACE
-			jmp WinProcExit
-
 		.ENDIF
 
 	;input char via keyboard
@@ -191,6 +238,8 @@ MessageHandler PROC,
 		INVOKE	DefWindowProc, hWnd, localMsg, wParam, lParam
 		jmp		WinProcExit
 	.ENDIF
+Show:
+	INVOKE ShowOutput
 WinProcExit:
 	ret
 MessageHandler ENDP
