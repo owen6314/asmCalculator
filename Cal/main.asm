@@ -36,44 +36,40 @@ IDC_EQU		equ		1044
 IDC_POINT		equ		1045
 IDD_CAL		equ		2000
 IDC_DISPLAY	equ		2001
+;----------function declaration-----------
+ShowOutput PROTO
+NumHandler PROTO: DWORD
+MessageHandler PROTO :DWORD,:DWORD, :DWORD, :DWORD 
+ErrorHandler PROTO
 
 ;----------DATA----------
 .data
 
-ErrorTitle	BYTE			"Error",0
+ErrorTitle		BYTE			"Error",0
 Template		BYTE			"Calculator", 0
-PopupTitle	BYTE			"Example", 0
+PopupTitle		BYTE			"Example", 0
 PopupText		BYTE			"Example", 0
-WndClass		WNDCLASSEX	<NULL,NULL,WinProc,NULL,NULL,NULL,NULL,NULL,COLOR_WINDOW,NULL,NULL,NULL>
-hMainWnd		DWORD		?
-hEdit		DWORD		?                    
-Output		BYTE			"0.",0,30 dup(0)      
+WndClass		WNDCLASSEX		<NULL,NULL,MessageHandler,NULL,NULL,NULL,NULL,NULL,COLOR_WINDOW,NULL,NULL,NULL>
+
+hMainWnd		DWORD			?
+hEdit			DWORD			?
+                    
+Output			BYTE			"0.", 0, 50 dup(0)   
+Operator		BYTE			?   
+
+IsStart			BYTE			1
 
 
 ;----------CODE----------
 .code
 
-WinProc PROC,
-	hWnd:DWORD, localMsg:DWORD, wParam:DWORD, lParam:DWORD
-	mov		eax, localMsg
-	.IF eax == WM_LBUTTONDOWN
-		INVOKE	MessageBox, hWnd, ADDR PopupText, ADDR PopupTitle, MB_OK
-		jmp		WinProcExit
-	.ELSE
-		INVOKE	DefWindowProc, hWnd, localMsg, wParam, lParam
-		jmp		WinProcExit
-	.ENDIF
-WinProcExit:
-	ret
-WinProc ENDP
-
 WinMain PROC
 LOCAL msg:MSG   
-; Get a handle to the current process.
 	
+	; Get a handle to the current process.
 	INVOKE	GetModuleHandle, NULL
 	.IF	eax == 0
-		call		ErrorHandler
+		call	ErrorHandler
 		jmp		Exit_Program
 	.ENDIF
 
@@ -92,14 +88,23 @@ LOCAL msg:MSG
 	;mov WndClass.hIconSm,0
 	invoke	RegisterClassEx,addr WndClass 
 
-	INVOKE	CreateDialogParam, WndClass.hInstance, addr Template, 0, addr WinProc, 0
+	INVOKE	CreateDialogParam, WndClass.hInstance, addr Template, 0, addr MessageHandler, 0
 	mov		hMainWnd, eax
+	.IF	eax == 0
+		call		ErrorHandler
+		jmp		Exit_Program
+	.ENDIF
+	;get components' handler
+	INVOKE  GetDlgItem, hMainWnd, IDC_DISPLAY
+	mov		hEdit, eax
+
 	.IF	eax == 0
 		call		ErrorHandler
 		jmp		Exit_Program
 	.ENDIF
 	INVOKE	ShowWindow,hMainWnd,SW_SHOWNORMAL
 	INVOKE	UpdateWindow,hMainWnd  
+
 StartLoop:
 	INVOKE	GetMessage,addr msg,0,0,0
 	cmp		eax,0
@@ -112,6 +117,83 @@ ExitLoop:
 Exit_Program:
 	INVOKE	ExitProcess,0
 WinMain ENDP
+
+;----------------------------------funcitonal procedure------------------------
+;Show output in text edit
+ShowOutput PROC
+	INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr Output
+	ret
+ShowOutput ENDP
+;----------------------------------specific handler-------------------------------
+NumHandler PROC, Num:DWORD
+	;eax is current number
+	mov eax, Num
+	sub eax, 952
+	;start new number
+	.IF IsStart == 1
+		mov esi, offset Output
+		mov [esi], eax
+		;inc esi
+		;mov BYTE PTR[esi], '.'
+		inc esi
+		mov BYTE PTR[esi], 0
+		mov IsStart, 0
+	;continue behind origin number
+	.ELSE
+		mov esi, offset Output
+		.while BYTE PTR[esi] != 0
+			inc esi
+		.endw
+		mov [esi], eax
+		inc esi
+		mov BYTE PTR[esi], 0
+	.ENDIF
+	ret
+NumHandler ENDP
+;-----------------------------------main message handler--------------------------
+MessageHandler PROC,
+	hWnd:DWORD, localMsg:DWORD, wParam:DWORD, lParam:DWORD
+
+	mov eax, localMsg
+
+	.IF eax == WM_COMMAND
+		mov eax, wParam
+		.IF (eax >= IDC_NUM0) && (eax <= IDC_NUM9)
+			INVOKE NumHandler, eax
+			Invoke ShowOutput
+			jmp WinProcExit
+		.ELSEIF eax == IDC_POINT
+			jmp WinProcExit
+		.ELSEIF eax == IDC_ADD
+			jmp WinProcExit
+		.ELSEIF eax == IDC_SUB
+			jmp WinProcExit
+		.ELSEIF eax == IDC_MUL
+			jmp WinProcExit
+		.ELSEIF eax == IDC_DIV
+			jmp WinProcExit
+		.ELSEIF eax == IDC_EQU
+			jmp WinProcExit
+		.ELSEIF eax == IDC_CE
+			jmp WinProcExit
+		.ELSEIF eax == IDC_C
+			jmp WinProcExit
+		.ELSEIF eax == IDC_BACKSPACE
+			jmp WinProcExit
+
+		.ENDIF
+
+	;input char via keyboard
+	.ELSEIF eax == WM_CHAR
+		INVOKE MessageBox, hWnd, ADDR PopupText, ADDR PopupTitle, MB_OK
+
+	.ELSE
+		INVOKE	DefWindowProc, hWnd, localMsg, wParam, lParam
+		jmp		WinProcExit
+	.ENDIF
+WinProcExit:
+	ret
+MessageHandler ENDP
 
 ErrorHandler PROC
 
