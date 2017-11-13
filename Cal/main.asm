@@ -78,6 +78,8 @@ Epsilon			dq				1.0E-18
 Zero			dq				0.0
 
 IsStart			BYTE			1
+;error code: divided by zero = 1
+ErrorCode		BYTE			0
 
 ;error message
 DividedByZero   BYTE			"Divided by Zero!", 0
@@ -134,16 +136,28 @@ Exit_Program:
 WinMain ENDP
 
 ;----------------------------------funcitonal procedure------------------------
-;TODO
 ;init calculator
 InitCal PROC
-
-
+	mov IsStart, 1
+	mov ErrorCode, 0
+	finit
+	fldz
+	fst lOperand
+	fst rOperand
+	fst Result
+	INVOKE ShowResult
+	INVOKE ShowOutput
+	ret
 InitCal ENDP
 
 ;Show Output in text edit
 ShowOutput PROC
-	INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr Output
+	.IF ErrorCode == 1
+		INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr DividedByZero
+		mov IsStart, 1
+	.ELSE
+		INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr Output
+	.ENDIF
 	ret
 ShowOutput ENDP
 
@@ -170,6 +184,14 @@ GetResult PROC
 		fstp Result
 	;TODO:Divide by zero
 	.ELSEIF Operator == '/'
+		fld rOperand
+		fldz
+		fcomi ST(0), ST(1)
+		jnz Divide
+		mov ErrorCode, 1
+		ret
+	Divide:
+		finit
 		fld lOperand
 		fdiv rOperand
 		fstp Result
@@ -191,6 +213,9 @@ ShowResult ENDP
 ;If is start of number, clear output and input number
 ;Or add number at the end of output
 NumHandler PROC, Num:DWORD
+	.IF ErrorCode != 0
+		mov ErrorCode, 0
+	.ENDIF
 	;eax: current number
 	mov eax, Num
 	sub eax, 952
@@ -218,15 +243,17 @@ NumHandler ENDP
 ;If already have point, return
 ;Or add point at the end of Output
 PointHandler PROC
-	mov esi, offset Output
-	.WHILE BYTE PTR[esi] != 0
-		.IF BYTE PTR[esi] == '.'
-			jmp PointReturn
-		.ENDIF
-		inc esi
-	.ENDW
-	mov BYTE PTR[esi], '.'
-	mov BYTE PTR[esi + 1], 0
+	.IF IsStart == 0
+		mov esi, offset Output
+		.WHILE BYTE PTR[esi] != 0
+			.IF BYTE PTR[esi] == '.'
+				jmp PointReturn
+			.ENDIF
+			inc esi
+		.ENDW
+		mov BYTE PTR[esi], '.'
+		mov BYTE PTR[esi + 1], 0
+	.ENDIF
 PointReturn:
 	ret
 PointHandler ENDP
