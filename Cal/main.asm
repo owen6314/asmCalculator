@@ -2,6 +2,8 @@
 .model flat, stdcall
 option casemap:none
 
+;include Irvine32.inc
+
 include C:\masm32\include\windows.inc 
 include C:\masm32\include\user32.inc 
 include C:\masm32\include\kernel32.inc 
@@ -11,6 +13,8 @@ include C:\masm32\include\masm32.inc
 includelib C:\masm32\lib\user32.lib 
 includelib C:\masm32\lib\kernel32.lib
 includelib C:\masm32\lib\masm32.lib
+
+
 
 ;--------CONSTANT--------
 IDC_NUM0		equ		1000
@@ -41,6 +45,7 @@ IDC_POINT		equ		1045
 IDD_CAL		equ		2000
 IDC_DISPLAY	equ		2001
 ;----------function declaration-----------
+InitCal PROTO
 ShowOutput PROTO
 GetCurNum PROTO :DWORD
 GetResult PROTO
@@ -62,15 +67,20 @@ hMainWnd		DWORD			?
 hEdit			DWORD			?
                     
 Output			BYTE			"0", 0, 50 dup(0)   
-Operator		BYTE			'.'
+Operator		BYTE			'.'   
 
 ;operands stored in calculator
 lOperand		dq				0.0
 rOperand		dq				0.0
 Result			dq				0.0
+;use to decide if two floats are equal
+Epsilon			dq				1.0E-18
+Zero			dq				0.0
 
 IsStart			BYTE			1
 
+;error message
+DividedByZero   BYTE			"Divided by Zero!", 0
 
 ;----------CODE----------
 .code
@@ -124,6 +134,13 @@ Exit_Program:
 WinMain ENDP
 
 ;----------------------------------funcitonal procedure------------------------
+;TODO
+;init calculator
+InitCal PROC
+
+
+InitCal ENDP
+
 ;Show Output in text edit
 ShowOutput PROC
 	INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr Output
@@ -141,8 +158,20 @@ GetResult PROC
 	finit
 	.IF Operator == '+'
 		fld lOperand
-		fld rOperand
-		fadd
+		fadd rOperand
+		fstp Result
+	.ELSEIF Operator == '*'
+		fld lOperand
+		fmul rOperand
+		fstp Result
+	.ELSEIF Operator == '-'
+		fld lOperand
+		fsub rOperand
+		fstp Result
+	;TODO:Divide by zero
+	.ELSEIF Operator == '/'
+		fld lOperand
+		fdiv rOperand
 		fstp Result
 	.ENDIF
 	ret
@@ -245,14 +274,50 @@ AddHandler PROC
 AddHandler ENDP
 
 SubHandler PROC
+	.IF Operator == '.'
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '-'
+		mov IsStart, 1
+	.ELSE
+		INVOKE GetCurNum, addr rOperand
+		INVOKE GetResult
+		INVOKE ShowResult
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '-'
+		mov IsStart, 1
+	.ENDIF
 	ret
 SubHandler ENDP
 
 MulHandler PROC
+	.IF Operator == '.'
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '*'
+		mov IsStart, 1
+	.ELSE
+		INVOKE GetCurNum, addr rOperand
+		INVOKE GetResult
+		INVOKE ShowResult
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '*'
+		mov IsStart, 1
+	.ENDIF
 	ret
 MulHandler ENDP
 
 DivHandler PROC
+	.IF Operator == '.'
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '/'
+		mov IsStart, 1
+	.ELSE
+		INVOKE GetCurNum, addr rOperand
+		INVOKE GetResult
+		INVOKE ShowResult
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '/'
+		mov IsStart, 1
+	.ENDIF
 	ret
 DivHandler ENDP
 
@@ -269,6 +334,13 @@ EqualHandler PROC
 	.ENDIF
 	ret
 EqualHandler ENDP
+
+;pushbutton clear
+ClearHandler PROC
+	INVOKE InitCal
+	ret
+ClearHandler ENDP
+
 
 ;-----------------------------------main message handler--------------------------
 MessageHandler PROC,
@@ -312,10 +384,9 @@ MessageHandler PROC,
 		.ELSEIF eax == IDC_EQU
 			INVOKE EqualHandler
 			jmp Show
-		.ELSEIF eax == IDC_CE
-			jmp WinProcExit
 		.ELSEIF eax == IDC_C
-			jmp WinProcExit
+			INVOKE ClearHandler
+			jmp Show
 		.ELSE
 			jmp WinProcExit
 		.ENDIF
