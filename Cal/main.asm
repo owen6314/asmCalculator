@@ -5,8 +5,12 @@ option casemap:none
 include C:\masm32\include\windows.inc 
 include C:\masm32\include\user32.inc 
 include C:\masm32\include\kernel32.inc 
+include C:\masm32\include\shell32.inc
+include C:\masm32\include\masm32.inc
+
 includelib C:\masm32\lib\user32.lib 
 includelib C:\masm32\lib\kernel32.lib
+includelib C:\masm32\lib\masm32.lib
 
 ;--------CONSTANT--------
 IDC_NUM0		equ		1000
@@ -38,6 +42,9 @@ IDD_CAL		equ		2000
 IDC_DISPLAY	equ		2001
 ;----------function declaration-----------
 ShowOutput PROTO
+GetCurNum PROTO :DWORD
+GetResult PROTO
+ShowResult PROTO
 MessageHandler PROTO :DWORD,:DWORD, :DWORD, :DWORD 
 NumHandler PROTO: DWORD
 ErrorHandler PROTO
@@ -55,7 +62,12 @@ hMainWnd		DWORD			?
 hEdit			DWORD			?
                     
 Output			BYTE			"0", 0, 50 dup(0)   
-Operator		BYTE			?   
+Operator		BYTE			'.'
+
+;operands stored in calculator
+lOperand		dq				0.0
+rOperand		dq				0.0
+Result			dq				0.0
 
 IsStart			BYTE			1
 
@@ -91,7 +103,7 @@ LOCAL msg:MSG
 	INVOKE	CreateDialogParam, WndClass.hInstance, addr Template, 0, addr MessageHandler, 0
 	mov		hMainWnd, eax
 	.IF	eax == 0
-		call		ErrorHandler
+		call	ErrorHandler
 		jmp		Exit_Program
 	.ENDIF
 
@@ -112,11 +124,38 @@ Exit_Program:
 WinMain ENDP
 
 ;----------------------------------funcitonal procedure------------------------
-;Show output in text edit
+;Show Output in text edit
 ShowOutput PROC
 	INVOKE SendMessage, hEdit, WM_SETTEXT, 0, addr Output
 	ret
 ShowOutput ENDP
+
+;get current number in Output, store it in rOperand
+GetCurNum PROC, Dest:DWORD
+	INVOKE StrToFloat, addr Output, Dest
+	ret
+GetCurNum ENDP
+
+;get result using Operator and l,roperand
+GetResult PROC
+	finit
+	.IF Operator == '+'
+		fld lOperand
+		fld rOperand
+		fadd
+		fstp Result
+	.ENDIF
+	ret
+GetResult ENDP
+
+;set output to result and show output
+;warning: floattostring uses esi and edi
+ShowResult PROC
+	INVOKE FloatToStr2, Result, addr Output
+	INVOKE ShowOutput
+	ret
+ShowResult ENDP
+
 ;----------------------------------specific handler-------------------------------
 
 ;pushbutton number, Num is Macro of Button
@@ -187,6 +226,49 @@ BackspaceReturn:
 	ret
 BackspaceHandler ENDP
 
+;four operators handler
+;If Operator is not '.' while pushing button, calculate and update Output first
+AddHandler PROC
+	.IF Operator == '.'
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '+'
+		mov IsStart, 1
+	.ELSE
+		INVOKE GetCurNum, addr rOperand
+		INVOKE GetResult
+		INVOKE ShowResult
+		INVOKE GetCurNum, addr lOperand
+		mov Operator, '+'
+		mov IsStart, 1
+	.ENDIF
+	ret
+AddHandler ENDP
+
+SubHandler PROC
+	ret
+SubHandler ENDP
+
+MulHandler PROC
+	ret
+MulHandler ENDP
+
+DivHandler PROC
+	ret
+DivHandler ENDP
+
+;pushbutton equal
+EqualHandler PROC
+	.IF Operator == '.'
+	.ELSE
+		INVOKE GetCurNum, addr rOperand
+		INVOKE GetResult
+		INVOKE ShowResult
+		INVOKE GetCurNum, addr lOperand
+		mov IsStart, 1
+		mov Operator, '.'
+	.ENDIF
+	ret
+EqualHandler ENDP
 
 ;-----------------------------------main message handler--------------------------
 MessageHandler PROC,
@@ -200,6 +282,7 @@ MessageHandler PROC,
 		.IF	eax == 0
 			call ErrorHandler
 		.ENDIF
+		;init
 		mov IsStart, 1
 		jmp Show
 
@@ -215,18 +298,25 @@ MessageHandler PROC,
 			INVOKE BackspaceHandler
 			jmp Show
 		.ELSEIF eax == IDC_ADD
-			jmp WinProcExit
+			INVOKE AddHandler
+			jmp Show
 		.ELSEIF eax == IDC_SUB
-			jmp WinProcExit
+			INVOKE SubHandler
+			jmp Show
 		.ELSEIF eax == IDC_MUL
-			jmp WinProcExit
+			INVOKE MulHandler
+			jmp Show
 		.ELSEIF eax == IDC_DIV
-			jmp WinProcExit
+			INVOKE DivHandler
+			jmp Show
 		.ELSEIF eax == IDC_EQU
-			jmp WinProcExit
+			INVOKE EqualHandler
+			jmp Show
 		.ELSEIF eax == IDC_CE
 			jmp WinProcExit
 		.ELSEIF eax == IDC_C
+			jmp WinProcExit
+		.ELSE
 			jmp WinProcExit
 		.ENDIF
 
