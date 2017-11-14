@@ -27,23 +27,23 @@ IDC_NUM6		equ		1006
 IDC_NUM7		equ		1007
 IDC_NUM8		equ		1008
 IDC_NUM9		equ		1009
-IDC_ADD		equ		1010
-IDC_SUB		equ		1011
-IDC_MUL		equ		1012
-IDC_DIV		equ		1013
-IDC_FAC		equ		1014
-IDC_PULSMINUS	equ		1015
-IDC_PI		equ		1016
-IDC_RBRACKET	equ		1030
-IDC_LBRACKET	equ		1031
+IDC_ADD			equ		1010
+IDC_SUB			equ		1011
+IDC_MUL			equ		1012
+IDC_DIV			equ		1013
+IDC_MSUB		equ		1014
+IDC_MC			equ		1015
+IDC_MADD		equ		1016
+IDC_GAME		equ		1030
+IDC_MS			equ		1031
 IDC_BACKSPACE	equ		1040
-IDC_C		equ		1041
-IDC_CE		equ		1042
+IDC_C		    equ		1041
+IDC_MUSIC		equ		1042
 IDC_SHIFT		equ		1043
-IDC_EQU		equ		1044
+IDC_EQU			equ		1044
 IDC_POINT		equ		1045
-IDD_CAL		equ		2000
-IDC_DISPLAY	equ		2001
+IDD_CAL			equ		2000
+IDC_DISPLAY		equ		2001
 ;----------function declaration-----------
 InitCal PROTO
 ShowOutput PROTO
@@ -73,6 +73,8 @@ Operator		BYTE			'.'
 lOperand		dq				0.0
 rOperand		dq				0.0
 Result			dq				0.0
+CalMemory		dq				0.0
+MemOperand      dq				0.0
 ;use to decide if two floats are equal
 Epsilon			dq				1.0E-18
 Zero			dq				0.0
@@ -144,6 +146,7 @@ InitCal PROC
 	fldz
 	fst lOperand
 	fst rOperand
+	fst CalMemory
 	fst Result
 	INVOKE ShowResult
 	INVOKE ShowOutput
@@ -368,6 +371,44 @@ ClearHandler PROC
 	ret
 ClearHandler ENDP
 
+;mem pushbutton
+;clear memory
+MemClearHandler PROC
+	finit
+	fldz
+	fst CalMemory
+	ret
+MemClearHandler ENDP
+
+;show memory
+MemShowHandler PROC
+	finit
+	fld CalMemory
+	fst Result
+	INVOKE ShowResult
+	mov IsStart, 1
+	ret
+MemShowHandler ENDP
+
+;add current number to cal mem
+MemAddHandler PROC
+	INVOKE GetCurNum, addr MemOperand
+	finit
+	fld CalMemory
+	fadd MemOperand
+	fst CalMemory
+	ret
+MemAddHandler ENDP
+
+;sub current number from cal mem
+MemSubHandler PROC
+	INVOKE GetCurNum, addr MemOperand
+	finit
+	fld CalMemory
+	fsub MemOperand
+	fst CalMemory
+	ret
+MemSubHandler ENDP
 
 ;-----------------------------------main message handler--------------------------
 MessageHandler PROC,
@@ -413,6 +454,18 @@ MessageHandler PROC,
 			jmp Show
 		.ELSEIF eax == IDC_C
 			INVOKE ClearHandler
+			jmp Show
+		.ELSEIF eax == IDC_MC
+			INVOKE MemClearHandler
+			jmp Show
+		.ELSEIF eax == IDC_MS
+			INVOKE MemShowHandler
+			jmp Show
+		.ELSEIF eax == IDC_MADD
+			INVOKE MemAddHandler
+			jmp Show
+		.ELSEIF eax == IDC_MSUB
+			INVOKE MemSubHandler
 			jmp Show
 		.ELSE
 			jmp WinProcExit
