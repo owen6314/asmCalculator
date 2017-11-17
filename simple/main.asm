@@ -2,19 +2,17 @@
 .model flat, stdcall
 option casemap:none
 
-;include Irvine32.inc
 
 include C:\masm32\include\windows.inc 
 include C:\masm32\include\user32.inc 
 include C:\masm32\include\kernel32.inc 
 include C:\masm32\include\shell32.inc
 include C:\masm32\include\masm32.inc
-
+include C:\masm32\include\winmm.inc
 includelib C:\masm32\lib\user32.lib 
 includelib C:\masm32\lib\kernel32.lib
 includelib C:\masm32\lib\masm32.lib
-
-
+includelib C:\masm32\lib\winmm.lib
 
 ;--------CONSTANT--------
 IDC_NUM0		equ		1000
@@ -53,14 +51,11 @@ ShowResult PROTO
 MessageHandler PROTO :DWORD,:DWORD, :DWORD, :DWORD 
 NumHandler PROTO: DWORD
 ErrorHandler PROTO
-
+PlayMidi PROTO :DWORD, :DWORD
 ;----------DATA----------
 .data
-
 ErrorTitle		BYTE			"Error",0
 Template		BYTE			"Calculator", 0
-PopupTitle		BYTE			"Example", 0
-PopupText		BYTE			"Example", 0
 WndClass		WNDCLASSEX		<NULL,NULL,MessageHandler,NULL,NULL,NULL,NULL,NULL,COLOR_WINDOW,NULL,NULL,NULL>
 
 hMainWnd		DWORD			?
@@ -75,16 +70,18 @@ rOperand		dq				0.0
 Result			dq				0.0
 CalMemory		dq				0.0
 MemOperand      dq				0.0
-;use to decide if two floats are equal
-Epsilon			dq				1.0E-18
-Zero			dq				0.0
 
 IsStart			BYTE			1
 ;error code: divided by zero = 1
 ErrorCode		BYTE			0
-
 ;error message
 DividedByZero   BYTE			"Divided by Zero!", 0
+
+;midi music playing param
+MidDeviceID		dd				0
+szMIDISeqr		db				"Sequencer", 0
+;midi music files, need to be put in the same directory with files
+TestMidiName    db				"twotigers.mid", 0
 
 ;----------CODE----------
 .code
@@ -106,12 +103,7 @@ LOCAL msg:MSG
 	mov		WndClass.cbWndExtra,DLGWINDOWEXTRA
 	mov		WndClass.hbrBackground,COLOR_BTNFACE+1  
 	mov		WndClass.lpszMenuName,NULL              
-	mov		WndClass.lpszClassName,OFFSET  Template    
-	;INVOKE LoadIcon,hInst,addr IconName 
-	;mov WndClass.hIcon,eax
-	;INVOKE LoadCursor,NULL,IDC_ARROW
-	;mov WndClass.hCursor,eax
-	;mov WndClass.hIconSm,0
+	mov		WndClass.lpszClassName,OFFSET Template    
 	INVOKE	RegisterClassEx,addr WndClass 
 
 	INVOKE	CreateDialogParam, WndClass.hInstance, addr Template, 0, addr MessageHandler, 0
@@ -135,6 +127,7 @@ ExitLoop:
 
 Exit_Program:
 	INVOKE	ExitProcess,0
+	ret
 WinMain ENDP
 
 ;----------------------------------funcitonal procedure------------------------
@@ -185,7 +178,6 @@ GetResult PROC
 		fld lOperand
 		fsub rOperand
 		fstp Result
-	;TODO:Divide by zero
 	.ELSEIF Operator == '/'
 		fld rOperand
 		fldz
@@ -209,6 +201,22 @@ ShowResult PROC
 	INVOKE ShowOutput
 	ret
 ShowResult ENDP
+
+;play midi file, need current window handler
+PlayMidi PROC hWin:DWORD, FileName:DWORD
+LOCAL mciOpenParms:MCI_OPEN_PARMS, mciPlayParms:MCI_PLAY_PARMS
+	mov eax, hWin
+	mov mciPlayParms.dwCallback, eax
+	mov eax, OFFSET szMIDISeqr
+	mov mciOpenParms.lpstrDeviceType, eax
+	mov eax, FileName
+	mov mciOpenParms.lpstrElementName, eax
+	invoke mciSendCommand, 0, MCI_OPEN,MCI_OPEN_TYPE or MCI_OPEN_ELEMENT, ADDR mciOpenParms
+	mov eax, mciOpenParms.wDeviceID
+	mov MidDeviceID, eax
+	invoke mciSendCommand, MidDeviceID, MCI_PLAY, MCI_NOTIFY, ADDR mciPlayParms 
+	ret 
+PlayMidi endp
 
 ;----------------------------------specific handler-------------------------------
 
@@ -410,6 +418,11 @@ MemSubHandler PROC
 	ret
 MemSubHandler ENDP
 
+;play midi music
+MusicHandler PROC
+	INVOKE PlayMidi, hMainWnd, addr TestMidiName
+	ret
+MusicHandler ENDP
 ;-----------------------------------main message handler--------------------------
 MessageHandler PROC,
 	hWnd:DWORD, localMsg:DWORD, wParam:DWORD, lParam:DWORD
@@ -463,18 +476,16 @@ MessageHandler PROC,
 			jmp Show
 		.ELSEIF eax == IDC_MADD
 			INVOKE MemAddHandler
-			jmp Show
+			jmp WinProcExit
 		.ELSEIF eax == IDC_MSUB
 			INVOKE MemSubHandler
-			jmp Show
+			jmp WinProcExit
+		.ELSEIF eax == IDC_MUSIC
+			INVOKE MusicHandler
+			jmp WinProcExit
 		.ELSE
 			jmp WinProcExit
 		.ENDIF
-
-	;input char via keyboard
-	.ELSEIF eax == WM_CHAR
-		INVOKE MessageBox, hWnd, ADDR PopupText, ADDR PopupTitle, MB_OK
-
 	.ELSE
 		INVOKE	DefWindowProc, hWnd, localMsg, wParam, lParam
 		jmp		WinProcExit
